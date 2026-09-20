@@ -28,6 +28,7 @@ def _epg():
 			{
 				'id': 'TF1.fr',
 				'name': 'TF1',
+				'number': 1,
 				'icon': 'channels/TF1_fr.png',
 				'programs': [
 					{
@@ -56,6 +57,11 @@ def test_write_site_writes_json_and_html(tmp_path):
 	with open(os.path.join(dest, 'index.html'), encoding='utf-8') as f:
 		html = f.read()
 	assert 'MamieTV' in html
+	# The list is rendered server-side, so it is present at first paint.
+	assert 'channel-head' in html
+	assert 'Equalizer 3' in html
+	assert '21:10' in html
+	assert 'channel-number' in html
 
 	assert summary == {'channels': 1, 'programs': 1, 'bytes': summary['bytes']}
 	assert summary['bytes'] > 0

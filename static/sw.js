@@ -47,7 +47,7 @@ self.addEventListener("fetch", (event) => {
 	if (url.origin !== self.location.origin) return;
 
 	if (request.mode === "navigate") {
-		event.respondWith(networkFirst(request, "index.html"));
+		event.respondWith(networkFirst(request, "index.html", true));
 		return;
 	}
 	if (url.pathname.endsWith("/data/epg.json")) {
@@ -57,10 +57,10 @@ self.addEventListener("fetch", (event) => {
 	event.respondWith(staleWhileRevalidate(request));
 });
 
-async function networkFirst(request, fallbackUrl) {
+async function networkFirst(request, fallbackUrl, noStore) {
 	const cache = await caches.open(CACHE);
 	try {
-		const response = await fetch(request);
+		const response = await fetch(request, noStore ? { cache: "no-store" } : {});
 		if (response && response.ok) cache.put(request, response.clone());
 		return response;
 	} catch (error) {

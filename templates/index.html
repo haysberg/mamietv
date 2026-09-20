@@ -1,3 +1,31 @@
+{% macro program_row(program) %}
+<li class="program{% if program.ended %} is-ended{% endif %}" data-start="{{ program.start_ms }}" data-stop="{{ program.stop_ms }}">
+  <div class="program-body">
+    <p class="program-title">{{ program.title }}</p>
+    {% if program.subtitle %}<p class="program-sub">{{ program.subtitle }}</p>{% endif %}
+    <div class="chips">
+      <span class="time">{{ program.start_label }}</span>
+      {% if program.category %}<span class="chip">{{ program.category }}</span>{% endif %}
+      {% if program.ended %}<span class="chip ended">Terminé</span>{% endif %}
+    </div>
+    {% if program.desc %}<p class="desc">{{ program.desc }}</p>{% endif %}
+    {% if program.more %}<button class="more" type="button">Plus de détails</button>{% endif %}
+  </div>
+</li>
+{% endmacro %}
+
+{% macro channel_card(card) %}
+<section class="channel">
+  <div class="channel-head">
+    {% if card.icon %}<img src="{{ card.icon }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="no-logo">📺</span>{% endif %}
+    <span class="channel-name">{{ card.name }}</span>
+    {% if card.number %}<span class="channel-number">{{ card.number }}</span>{% endif %}
+  </div>
+  <ul class="programs">
+    {% for program in card.programs %}{{ program_row(program) }}{% endfor %}
+  </ul>
+</section>
+{% endmacro %}
 <!DOCTYPE html>
 <html lang="fr">
 {% include "head.html" %}
@@ -11,11 +39,17 @@
       </svg>
       <span class="brand-name">MamieTV</span>
     </h1>
+    <button id="install" class="install" type="button" hidden>Installer</button>
   </header>
 
   <main>
-    <div id="status" class="status" role="status">Chargement du programme…</div>
-    <div id="channels" class="channels" aria-live="polite"></div>
+    {% if not cards %}<p class="status">Aucun programme pour cette soirée.</p>{% endif %}
+    <div id="channels" class="channels" aria-live="polite"
+         data-generated-at="{{ generated_at }}"
+         data-evening-start="{{ evening_start }}"
+         data-evening-end="{{ evening_end }}">
+      {% for card in cards %}{{ channel_card(card) }}{% endfor %}
+    </div>
   </main>
 
   {% include "footer.html" %}

@@ -3,207 +3,79 @@
 /*
  * MamieTV — front-end.
  *
- * Le backend a déjà téléchargé et découpé le guide : cette page ne fait que
- * charger data/epg.json (même origine) et l'afficher. « En ce moment » est
- * recalculé en continu, et le guide est rechargé tout seul pour ne jamais
- * rester bloqué sur une soirée périmée.
+ * La page est rendue côté serveur : le HTML contient déjà les programmes, donc
+ * rien ne bouge au chargement. Ce script ne gère que le dépliage d'un
+ * programme, le marquage « Terminé », le rechargement automatique du guide et
+ * l'installation de la PWA.
  */
 
 const DATA_URL = window.MAMIETV_DATA || "data/epg.json";
-const TZ = "Europe/Paris";
 const REFRESH_MS = 15 * 60 * 1000;
 const MIN_REFRESH_GAP_MS = 60 * 1000;
 
-const state = {
-  channels: [],
-  eveningStart: 0,
-  eveningEnd: 0,
-  generatedAt: null,
-};
-let lastLoad = 0;
+const channelsElement = document.getElementById("channels");
+let lastRefresh = 0;
 
-const $ = (sel) => document.querySelector(sel);
-
-const fmtTime = new Intl.DateTimeFormat("fr-FR", {
-  timeZone: TZ, hour: "2-digit", minute: "2-digit",
-});
-
-function el(tag, props = {}, children = []) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(props)) {
-    if (key === "class") node.className = value;
-    else if (key === "text") node.textContent = value;
-    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
-    else if (value !== null && value !== undefined) node.setAttribute(key, value);
-  }
-  for (const child of [].concat(children)) if (child) node.append(child);
-  return node;
-}
-
-function visiblePrograms(programs) {
-  // Strict prime time: only programs that *start* in [eveningStart, eveningEnd].
-  return programs.filter((p) => {
-    const start = Date.parse(p.start);
-    return start >= state.eveningStart && start < state.eveningEnd;
-  });
-}
-
-function programRow(program, now) {
-  const start = Date.parse(program.start);
-  const stop = Date.parse(program.stop);
-  const isNow = now >= start && now < stop;
-  const ended = stop <= now;
-
-  const chips = el("div", { class: "chips" }, [
-    el("span", { class: "time", text: fmtTime.format(new Date(start)) }),
-    program.category ? el("span", { class: "chip", text: program.category }) : null,
-    isNow ? el("span", { class: "chip now", text: "En ce moment" }) : null,
-    ended ? el("span", { class: "chip ended", text: "Terminé" }) : null,
-  ]);
-
-  const body = el("div", { class: "program-body" }, [
-    el("p", { class: "program-title", text: program.title }),
-    program.subtitle ? el("p", { class: "program-sub", text: program.subtitle }) : null,
-    chips,
-    program.desc ? el("p", { class: "desc", text: program.desc }) : null,
-    program.desc && program.desc.length > 140
-      ? el("button", { class: "more", type: "button", text: "Plus de détails" })
-      : null,
-  ]);
-
-  const row = el("li", {
-    class: `program${isNow ? " is-now" : ""}${ended ? " is-ended" : ""}`,
-    "data-start": String(start),
-    "data-stop": String(stop),
-  }, [body]);
-
-  row.addEventListener("click", () => {
-    row.classList.toggle("expanded");
-    const button = row.querySelector(".more");
-    if (button) {
-      button.textContent = row.classList.contains("expanded")
-        ? "Moins de détails" : "Plus de détails";
-    }
-  });
-  return row;
-}
-
-function channelCard(channel, now) {
-  const logo = channel.icon
-    ? el("img", { src: channel.icon, alt: "", loading: "lazy", referrerpolicy: "no-referrer" })
-    : el("span", { class: "no-logo", text: "📺" });
-
-  const list = el("ul", { class: "programs" });
-  for (const program of visiblePrograms(channel.programs)) {
-    list.append(programRow(program, now));
-  }
-
-  const head = el("div", { class: "channel-head" }, [
-    logo,
-    el("span", { class: "channel-name", text: channel.name }),
-    channel.number ? el("span", { class: "channel-number", text: String(channel.number) }) : null,
-  ]);
-
-  return el("section", { class: `channel${list.querySelector(".is-now") ? " has-now" : ""}` }, [
-    head,
-    list,
-  ]);
-}
-
-function render() {
+function updateEnded() {
   const now = Date.now();
-  const container = $("#channels");
-  container.replaceChildren();
-  for (const channel of state.channels) {
-    container.append(channelCard(channel, now));
-  }
-
-  const status = $("#status");
-  status.className = "status";
-  status.textContent = state.channels.length ? "" : "Aucun programme pour cette soirée.";
-}
-
-function updateNow() {
-  const now = Date.now();
-  document.querySelectorAll(".program").forEach((row) => {
-    const start = Number(row.dataset.start);
-    const stop = Number(row.dataset.stop);
-    const isNow = now >= start && now < stop;
-    const ended = stop <= now;
-    row.classList.toggle("is-now", isNow);
+  const rows = document.querySelectorAll(".program");
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const ended = Number(row.getAttribute("data-stop")) <= now;
     row.classList.toggle("is-ended", ended);
 
     const chips = row.querySelector(".chips");
-    if (!chips) return;
-
-    const existingNow = row.querySelector(".chip.now");
-    if (isNow && !existingNow) {
-      chips.append(el("span", { class: "chip now", text: "En ce moment" }));
-    } else if (!isNow && existingNow) {
-      existingNow.remove();
+    if (!chips) continue;
+    const existing = row.querySelector(".chip.ended");
+    if (ended && !existing) {
+      const chip = document.createElement("span");
+      chip.className = "chip ended";
+      chip.textContent = "Terminé";
+      chips.appendChild(chip);
+    } else if (!ended && existing) {
+      existing.remove();
     }
-
-    const existingEnded = row.querySelector(".chip.ended");
-    if (ended && !existingEnded) {
-      chips.append(el("span", { class: "chip ended", text: "Terminé" }));
-    } else if (!ended && existingEnded) {
-      existingEnded.remove();
-    }
-  });
-
-  document.querySelectorAll(".channel").forEach((card) => {
-    card.classList.toggle("has-now", Boolean(card.querySelector(".is-now")));
-  });
+  }
 }
 
-function showError() {
-  const status = $("#status");
-  status.className = "status error";
-  status.textContent = "Impossible de charger le programme. Réessayez dans un instant.";
-}
-
-async function load(force = false) {
-  const url = force ? `${DATA_URL}${DATA_URL.includes("?") ? "&" : "?"}t=${Date.now()}` : DATA_URL;
-  const response = await fetch(url, { cache: force ? "no-store" : "default" });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  lastLoad = Date.now();
-
-  const data = await response.json();
-  // Unchanged guide: keep what is on screen (and its scroll position).
-  if (data.generated_at === state.generatedAt) return;
-
-  state.generatedAt = data.generated_at;
-  state.channels = data.channels || [];
-  state.eveningStart = Date.parse(data.evening_start);
-  state.eveningEnd = Date.parse(data.evening_end);
-
-  $("#generated").textContent = `Mis à jour le ${new Date(data.generated_at).toLocaleString("fr-FR")}`;
-  render();
+function toggleProgram(row) {
+  row.classList.toggle("expanded");
+  const button = row.querySelector(".more");
+  if (button) {
+    button.textContent = row.classList.contains("expanded") ? "Moins de détails" : "Plus de détails";
+  }
 }
 
 async function refresh() {
+  lastRefresh = Date.now();
   try {
-    await load(true);
+    const url = DATA_URL + (DATA_URL.indexOf("?") === -1 ? "?" : "&") + "t=" + Date.now();
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return;
+    const data = await response.json();
+    const current = channelsElement && channelsElement.getAttribute("data-generated-at");
+    // New guide available: reload so the freshly server-rendered HTML is shown.
+    if (data.generated_at !== current) window.location.reload();
   } catch (err) {
-    // Offline or transient: the current guide stays displayed.
     console.warn("Rafraîchissement du guide impossible :", err);
   }
 }
 
-async function init() {
-  setInterval(updateNow, 30000);
-  setInterval(refresh, REFRESH_MS);
-  // Coming back to the tab/app (typically the next day on a phone) reloads it.
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && Date.now() - lastLoad > MIN_REFRESH_GAP_MS) refresh();
-  });
-
-  try {
-    await load(false);
-  } catch (err) {
-    showError();
-    console.error(err);
+function init() {
+  if (channelsElement) {
+    channelsElement.addEventListener("click", (event) => {
+      const row = event.target.closest(".program");
+      if (row) toggleProgram(row);
+    });
   }
+
+  updateEnded();
+  setInterval(updateEnded, 30000);
+  setInterval(refresh, REFRESH_MS);
+  // Coming back to the tab/app (typically the next day on a phone) checks too.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && Date.now() - lastRefresh > MIN_REFRESH_GAP_MS) refresh();
+  });
 }
 
 init();
@@ -213,5 +85,52 @@ init();
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch((err) => console.warn("Service worker", err));
+  });
+}
+
+// "Installer" button, shown only when the app is not already running as an
+// installed PWA. Uses the native prompt when the browser offers one, otherwise
+// points to the "Add to Home Screen" browser menu (iOS Safari).
+const installButton = document.getElementById("install");
+let installPrompt = null;
+
+function isInstalledPWA() {
+  const modes = ["standalone", "fullscreen", "minimal-ui"];
+  for (let i = 0; i < modes.length; i += 1) {
+    if (window.matchMedia("(display-mode: " + modes[i] + ")").matches) return true;
+  }
+  return window.navigator.standalone === true;
+}
+
+function updateInstallButton() {
+  if (installButton) installButton.hidden = isInstalledPWA();
+}
+
+if (installButton) {
+  updateInstallButton();
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    updateInstallButton();
+  });
+
+  installButton.addEventListener("click", async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      updateInstallButton();
+    } else {
+      window.alert(
+        "Pour installer MamieTV : ouvrez le menu du navigateur, puis " +
+          "« Installer l'application » ou « Ajouter à l'écran d'accueil ».",
+      );
+    }
+  });
+
+  window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+    updateInstallButton();
   });
 }
