@@ -1,19 +1,20 @@
-"""Generate the static site once and exit.
+"""Generate the static site into `dist/`.
 
-This is what CI (and `task build`) runs: fetch the guide, download the logos,
-render `static/index.html` and `static/data/epg.json`. The FastAPI app in
-`app.py` reuses the exact same `init_service()` for its scheduled refreshes.
+    uv run python build.py
+
+The output is a self-contained folder (HTML/CSS/JS + data + icons) that can be
+published anywhere, GitHub Pages included.
 """
 
 import asyncio
 
+from utils.build import build
 from utils.logs import configure_logging
-from utils.utils import init_service
 
 
 def main() -> None:
 	configure_logging()
-	asyncio.run(init_service())
+	asyncio.run(build())
 
 
 if __name__ == '__main__':

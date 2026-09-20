@@ -2,19 +2,24 @@ version: '3'
 
 tasks:
   default:
-    desc: Run the app locally (http://localhost:8000)
-    cmds:
-      - uv run python app.py
-
-  install:
-    desc: Install Python dependencies
-    cmds:
-      - uv sync
-
-  build:
-    desc: Fetch the guide and generate the static site once, then exit
+    desc: Generate the static site into dist/
     cmds:
       - uv run python build.py
+
+  build:
+    desc: Generate the static site into dist/
+    cmds:
+      - uv run python build.py
+
+  preview:
+    desc: Serve the generated dist/ locally on http://localhost:8000
+    cmds:
+      - python3 -m http.server -d dist 8000
+
+  icons:
+    desc: Regenerate the PWA/favicon icons (Pillow, dev only)
+    cmds:
+      - uv run python build_tools/make_icons.py
 
   check:
     desc: Lint and run the test suite

@@ -1,24 +1,23 @@
-"""Render the site's HTML/JSON and write the pre-compressed static tree.
+"""Assemble the publishable `dist/` tree.
 
-Rendering is intentionally synchronous and CPU-bound (brotli quality 11,
-minify-html): the scheduler calls it through ``asyncio.to_thread`` so the event
-loop keeps serving requests while a regeneration runs.
+`copy_assets()` lays down the committed assets, then `write_site()` adds the
+generated `data/epg.json` and `index.html`. Writes are atomic (temp file +
+`os.replace`) so a preview served mid-build never sees a half-written file.
 """
 
 import hashlib
 import json
 import os
+import shutil
 
 import minify_html
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from precompress import write_compressed
-from utils import DATA_DIR, INDEX_FILE, STATIC_DIR, TEMPLATES_DIR
+from utils import DIST_DIR, STATIC_DIR, TEMPLATES_DIR
 
-# Text assets that get a `.br`/`.gz` sibling at startup. Raster images
-# (channel logos) are already compressed, so compressing them again would only
-# waste CPU. Generated files (index.html, data/*.json) go through write_site.
-_ASSET_EXTENSIONS = {'.css', '.js', '.svg', '.txt', '.webmanifest'}
+# Generated directories/files that must never be copied from `static/` even if
+# a previous run left them there.
+_GENERATED = ('data', 'channels', 'index.html', 'index.html.br', 'index.html.gz')
 
 _env = Environment(
 	loader=FileSystemLoader(TEMPLATES_DIR),
@@ -37,59 +36,54 @@ def _file_hash(path: str) -> str:
 		return _md5(f.read())
 
 
-def asset_hashes() -> dict[str, str]:
-	"""Content hashes for cache-busting query strings on the static assets."""
+def _write_atomic(path: str, data: bytes) -> None:
+	os.makedirs(os.path.dirname(path), exist_ok=True)
+	tmp = path + '.tmp'
+	with open(tmp, 'wb') as f:
+		f.write(data)
+	os.replace(tmp, path)
+
+
+def copy_assets(dest: str = DIST_DIR) -> None:
+	"""Recreate `dest` from a clean copy of the committed `static/` tree."""
+	shutil.rmtree(dest, ignore_errors=True)
+	shutil.copytree(STATIC_DIR, dest)
+	for name in _GENERATED:
+		path = os.path.join(dest, name)
+		if os.path.isdir(path):
+			shutil.rmtree(path)
+		elif os.path.exists(path):
+			os.remove(path)
+
+
+def asset_hashes(dest: str = DIST_DIR) -> dict[str, str]:
+	"""Content hashes for cache-busting query strings."""
 	return {
-		'css_hash': _file_hash(os.path.join(STATIC_DIR, 'css', 'style.css')),
-		'js_hash': _file_hash(os.path.join(STATIC_DIR, 'js', 'app.js')),
+		'css_hash': _file_hash(os.path.join(dest, 'css', 'style.css')),
+		'js_hash': _file_hash(os.path.join(dest, 'js', 'app.js')),
 	}
 
 
-def render_index(epg: dict, data_hash: str) -> str:
+def render_index(epg: dict, data_hash: str, dest: str = DIST_DIR) -> str:
 	html = _env.get_template('index.html').render(
 		data_hash=data_hash,
 		generated_at=epg['generated_at'],
 		source=epg['source'],
-		**asset_hashes(),
+		**asset_hashes(dest),
 	)
-	# CSS/JS is already minified at the source; only inline markup is squeezed.
 	return minify_html.minify(html, minify_css=False, minify_js=True)
 
 
-def write_site(epg: dict) -> dict:
-	"""Write index.html and data/epg.json (plus .br/.gz) and return a summary."""
+def write_site(epg: dict, dest: str = DIST_DIR) -> dict:
+	"""Write `data/epg.json` and `index.html` into `dest`."""
 	epg_bytes = json.dumps(epg, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
-	write_compressed(os.path.join(DATA_DIR, 'epg.json'), epg_bytes)
+	_write_atomic(os.path.join(dest, 'data', 'epg.json'), epg_bytes)
 
-	html = render_index(epg, _md5(epg_bytes))
-	write_compressed(INDEX_FILE, html)
+	html = render_index(epg, _md5(epg_bytes), dest)
+	_write_atomic(os.path.join(dest, 'index.html'), html.encode('utf-8'))
 
 	return {
 		'channels': len(epg['channels']),
 		'programs': sum(len(channel['programs']) for channel in epg['channels']),
 		'bytes': len(html) + len(epg_bytes),
 	}
-
-
-def precompress_assets() -> int:
-	"""Create missing `.br`/`.gz` siblings for the committed static assets.
-
-	Only missing siblings are produced, so restarting the app does not re-brotli
-	the whole tree at quality 11. Source files themselves are never touched.
-	"""
-	count = 0
-	for root, _dirs, files in os.walk(STATIC_DIR):
-		if os.path.abspath(root) == os.path.abspath(DATA_DIR):
-			continue
-		for name in files:
-			if name.endswith(('.br', '.gz', '.tmp')):
-				continue
-			if os.path.splitext(name)[1] not in _ASSET_EXTENSIONS:
-				continue
-			path = os.path.join(root, name)
-			if os.path.exists(path + '.br') and os.path.exists(path + '.gz'):
-				continue
-			with open(path, 'rb') as f:
-				write_compressed(path, f.read())
-			count += 1
-	return count

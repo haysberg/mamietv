@@ -1,50 +1,61 @@
+import json
 import os
 
-from precompress import write_compressed
 from utils import render
 
 
-def test_write_compressed_writes_plain_and_siblings(tmp_path):
-	path = os.path.join(tmp_path, 'index.html')
-	write_compressed(path, '<p>bonjour</p>')
+def test_copy_assets_creates_a_clean_tree(tmp_path):
+	dest = str(tmp_path / 'dist')
+	render.copy_assets(dest)
 
-	with open(path, 'rb') as f:
-		plain = f.read()
-	assert plain == b'<p>bonjour</p>'
-	assert os.path.exists(path + '.br')
-	assert os.path.exists(path + '.gz')
-	assert os.path.getsize(path + '.gz') > 0
-
-
-def _touch(path, data):
-	os.makedirs(os.path.dirname(path), exist_ok=True)
-	with open(path, 'wb') as f:
-		f.write(data)
+	assert os.path.exists(os.path.join(dest, 'css', 'style.css'))
+	assert os.path.exists(os.path.join(dest, 'js', 'app.js'))
+	assert os.path.exists(os.path.join(dest, 'manifest.webmanifest'))
+	assert os.path.exists(os.path.join(dest, 'sw.js'))
+	# Generated output is never carried over from a previous build.
+	assert not os.path.exists(os.path.join(dest, 'index.html'))
+	assert not os.path.exists(os.path.join(dest, 'data'))
 
 
-def test_precompress_assets_only_touches_missing_siblings(tmp_path, monkeypatch):
-	static = tmp_path / 'static'
-	data = static / 'data'
-	data.mkdir(parents=True)
+def _epg():
+	return {
+		'generated_at': '2026-09-20T21:00:00+02:00',
+		'day': '2026-09-20',
+		'evening_start': '2026-09-20T20:45:00+02:00',
+		'evening_end': '2026-09-21T00:00:00+02:00',
+		'source': 'https://xmltvfr.fr/xmltv/xmltv_tnt.xml.gz',
+		'channels': [
+			{
+				'id': 'TF1.fr',
+				'name': 'TF1',
+				'icon': 'channels/TF1_fr.png',
+				'programs': [
+					{
+						'start': '2026-09-20T21:10:00+02:00',
+						'stop': '2026-09-20T23:15:00+02:00',
+						'title': 'Equalizer 3',
+						'subtitle': '',
+						'desc': 'Un film.',
+						'category': 'Film',
+					}
+				],
+			}
+		],
+	}
 
-	_touch(str(static / 'css' / 'style.css'), b'body{color:red}')
-	_touch(str(static / 'js' / 'app.js'), b'console.log(1)')
-	# Generated data must be ignored: it is compressed by write_site.
-	_touch(str(data / 'epg.json'), b'{}')
-	# Raster images are already compressed and must be left alone.
-	_touch(str(static / 'channels' / 'TF1_fr.png'), b'\x89PNG\r\n')
-	# A file that already has its siblings must not be processed.
-	_touch(str(static / 'robots.txt'), b'ok')
-	_touch(str(static / 'robots.txt.br'), b'ok')
-	_touch(str(static / 'robots.txt.gz'), b'ok')
 
-	monkeypatch.setattr(render, 'STATIC_DIR', str(static))
-	monkeypatch.setattr(render, 'DATA_DIR', str(data))
+def test_write_site_writes_json_and_html(tmp_path):
+	dest = str(tmp_path / 'dist')
+	render.copy_assets(dest)
+	summary = render.write_site(_epg(), dest)
 
-	count = render.precompress_assets()
+	with open(os.path.join(dest, 'data', 'epg.json'), encoding='utf-8') as f:
+		data = json.load(f)
+	assert data['channels'][0]['name'] == 'TF1'
 
-	assert count == 2  # style.css and app.js
-	assert os.path.exists(str(static / 'css' / 'style.css.br'))
-	assert os.path.exists(str(static / 'js' / 'app.js.gz'))
-	assert not os.path.exists(str(data / 'epg.json.br'))
-	assert not os.path.exists(str(static / 'channels' / 'TF1_fr.png.br'))
+	with open(os.path.join(dest, 'index.html'), encoding='utf-8') as f:
+		html = f.read()
+	assert 'MamieTV' in html
+
+	assert summary == {'channels': 1, 'programs': 1, 'bytes': summary['bytes']}
+	assert summary['bytes'] > 0

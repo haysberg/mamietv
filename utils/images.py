@@ -1,9 +1,9 @@
-"""Download channel logos so the browser never has to hit third-party hosts.
+"""Download channel logos so the published site never hits third-party hosts.
 
-Hotlinking `programme-tv.net` from the page is fragile (tracking protection,
-CDNs, referrer rules) and heavy (the default logo is 480x480, ~130 kB each).
-Instead the backend fetches a small variant once, stores it under
-`static/channels/`, and rewrites the JSON to a relative `channels/...` path.
+Hotlinking `programme-tv.net` is fragile (tracking protection, CDNs, referrer
+rules) and heavy (the default logo is 480x480, ~130 kB). The build fetches a
+small variant once, writes it under `dist/channels/`, and rewrites the JSON to a
+relative `channels/...` path.
 """
 
 import asyncio
@@ -12,10 +12,8 @@ import re
 
 import httpx
 
-from utils import STATIC_DIR
+from utils import DIST_DIR
 from utils.logs import logger
-
-CHANNEL_DIR = os.path.join(STATIC_DIR, 'channels')
 
 # programme-tv.net serves every size from the same URL by swapping the
 # "/<w>x<h>/quality/<q>/" segment. Requesting 96x96 drops each logo from
@@ -35,9 +33,9 @@ def _filename(channel_id: str, url: str) -> str:
 	return f'{safe}.{"jpg" if ext == "jpeg" else ext}'
 
 
-async def _download(client: httpx.AsyncClient, channel: dict) -> None:
+async def _download(client: httpx.AsyncClient, channel: dict, channel_dir: str) -> None:
 	filename = _filename(channel['id'], channel['icon'])
-	path = os.path.join(CHANNEL_DIR, filename)
+	path = os.path.join(channel_dir, filename)
 	local_url = f'channels/{filename}'
 
 	if os.path.exists(path) and os.path.getsize(path) > 0:
@@ -52,16 +50,17 @@ async def _download(client: httpx.AsyncClient, channel: dict) -> None:
 		logger.warning('Channel icon download failed', channel=channel['id'], error=str(exc))
 		return
 
-	tmp = path + '.tmp'
-	with open(tmp, 'wb') as f:
+	with open(path, 'wb') as f:
 		f.write(response.content)
-	os.replace(tmp, path)
 	channel['icon'] = local_url
 
 
-async def localize_icons(channels: list[dict], client: httpx.AsyncClient) -> int:
-	"""Download missing channel logos and rewrite their URLs to `channels/...`."""
-	os.makedirs(CHANNEL_DIR, exist_ok=True)
+async def localize_icons(
+	channels: list[dict], client: httpx.AsyncClient, channel_dir: str | None = None
+) -> int:
+	"""Download missing channel logos into `channel_dir`; rewrite URLs to relative."""
+	channel_dir = channel_dir or os.path.join(DIST_DIR, 'channels')
+	os.makedirs(channel_dir, exist_ok=True)
 	pending = [channel for channel in channels if channel.get('icon')]
-	await asyncio.gather(*(_download(client, channel) for channel in pending))
+	await asyncio.gather(*(_download(client, channel, channel_dir) for channel in pending))
 	return sum(1 for channel in channels if not (channel.get('icon') or '').startswith('http'))

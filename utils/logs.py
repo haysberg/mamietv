@@ -6,8 +6,8 @@ import structlog
 LOGLEVEL = os.getenv('LOGLEVEL', 'INFO').upper()
 
 
-def configure_logging():
-	"""Configure structlog and funnel uvicorn/httpx logs through it."""
+def configure_logging() -> None:
+	"""Configure structlog with a readable console renderer."""
 	processors = [
 		structlog.stdlib.PositionalArgumentsFormatter(),
 		structlog.processors.StackInfoRenderer(),
@@ -22,31 +22,19 @@ def configure_logging():
 		cache_logger_on_first_use=True,
 	)
 
-	formatter = structlog.stdlib.ProcessorFormatter(
-		processor=structlog.dev.ConsoleRenderer(colors=True),
-		foreign_pre_chain=[
-			structlog.stdlib.add_log_level,
-			structlog.stdlib.PositionalArgumentsFormatter(),
-			structlog.processors.StackInfoRenderer(),
-			structlog.processors.TimeStamper(fmt='iso', utc=False),
-		],
-	)
-
 	handler = logging.StreamHandler()
-	handler.setFormatter(formatter)
+	handler.setFormatter(
+		structlog.stdlib.ProcessorFormatter(
+			processor=structlog.dev.ConsoleRenderer(colors=True),
+			foreign_pre_chain=[
+				structlog.stdlib.add_log_level,
+				structlog.stdlib.PositionalArgumentsFormatter(),
+				structlog.processors.TimeStamper(fmt='iso', utc=False),
+			],
+		)
+	)
 	logging.basicConfig(handlers=[handler], level=LOGLEVEL)
-
-	structlog_logger = logging.getLogger('structlog')
-	structlog_logger.propagate = False
-
-	# Uvicorn and the scheduler should log through the same handler.
-	for name in ('uvicorn', 'uvicorn.error', 'uvicorn.access', 'apscheduler'):
-		child = logging.getLogger(name)
-		child.handlers = [handler]
-		child.propagate = False
-
 	logging.getLogger('httpx').setLevel(logging.WARNING)
-	logging.getLogger().setLevel(LOGLEVEL)
 
 
 logger = structlog.get_logger()

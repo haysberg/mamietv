@@ -9,12 +9,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "app.py"
       - "build.py"
       - "mamietv.toml"
       - "utils/**"
       - "templates/**"
       - "static/**"
+      - "build_tools/**"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/pages.yml"
@@ -44,14 +44,7 @@ jobs:
         run: uv run python build.py
 
       - name: Sanity check
-        run: test -f static/index.html && test -f static/data/epg.json
-
-      # GitHub Pages compresses on its own, so the .br/.gz siblings the local
-      # middleware uses are dead weight here: keep only the plain files.
-      - name: Assemble the Pages artifact
-        run: |
-          mkdir -p dist
-          rsync -a --exclude='*.br' --exclude='*.gz' --exclude='*.tmp' static/ dist/
+        run: test -f dist/index.html && test -f dist/data/epg.json
 
       - uses: actions/configure-pages@v5
 
