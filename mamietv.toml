@@ -1,0 +1,49 @@
+# Where the EPG comes from. XML TV Fr publishes ready-made XMLTV guides; the
+# TNT guide covers the 30 French DVB-T channels and is regenerated daily.
+[source]
+url = "https://xmltvfr.fr/xmltv/xmltv_tnt.xml.gz"
+user_agent = "MamieTV/1.0 (+https://github.com/haysberg/mamietv)"
+
+[server]
+# The upstream guide only changes a few times a day, so a 3-hour refresh is
+# plenty and keeps us polite with xmltvfr.fr. A conditional GET (ETag /
+# Last-Modified) makes most of those refreshes free anyway.
+update_interval_minutes = 180
+host = "0.0.0.0"
+port = 8000
+
+[evening]
+# "Ce soir" = prime time, 20 h 45 -> minuit (heure de Paris). Only programs that
+# start in that window are shown, so no buffer is needed on the start side.
+start_hour = 20
+start_minute = 45
+end_hour = 0
+end_minute = 0
+buffer_hours = 0
+# Télé-Loisirs-style selection: keep at most max_programs "real" shows per
+# channel (the headliner and its follow-up). Shows shorter than
+# min_duration_minutes (météo, trailers, fillers) are ignored when choosing.
+max_programs = 2
+min_duration_minutes = 25
+# Kept: TNT channels numbered 1-20, minus the news channels (BFM TV, CNews,
+# LCI, franceinfo) and minus the paid Canal+ (4). The order here does not
+# matter: the guide's own TNT order is preserved.
+channels = [
+	"TF1.fr",
+	"France2.fr",
+	"France3.fr",
+	"France5.fr",
+	"M6.fr",
+	"Arte.fr",
+	"W9.fr",
+	"TMC.fr",
+	"NT1.fr",
+	"LaChaineParlementaire.fr",
+	"France4.fr",
+	"CStar.fr",
+	"Gulli.fr",
+	"T18.fr",
+	"NOVO19.fr",
+	"TF1SeriesFilms.fr",
+	"LEquipe21.fr",
+]

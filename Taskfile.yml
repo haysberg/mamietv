@@ -1,0 +1,29 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Run the app locally (http://localhost:8000)
+    cmds:
+      - uv run python app.py
+
+  install:
+    desc: Install Python dependencies
+    cmds:
+      - uv sync
+
+  build:
+    desc: Fetch the guide and generate the static site once, then exit
+    cmds:
+      - uv run python build.py
+
+  check:
+    desc: Lint and run the test suite
+    cmds:
+      - uv run ruff check .
+      - uv run pytest -q
+
+  format:
+    desc: Format the Python sources
+    cmds:
+      - uv run ruff format .
+      - uv run ruff check --fix .

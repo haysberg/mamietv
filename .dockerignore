@@ -1,0 +1,17 @@
+# Build context is only the sources the image builds from; keep host-installed
+# trees and runtime-generated files out of it.
+.git
+.venv
+node_modules
+__pycache__
+.pytest_cache
+.ruff_cache
+
+# Generated at runtime (the app rebuilds these on startup).
+static/index.html
+static/index.html.br
+static/index.html.gz
+static/data
+static/channels
+static/**/*.br
+static/**/*.gz

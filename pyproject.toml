@@ -1,0 +1,77 @@
+[project]
+name = "mamietv"
+version = "0.1.0"
+description = "Programme TV du soir pour les chaines de la TNT francaise."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "apscheduler>=3.11.0",
+    "brotli>=1.2.0",
+    "fastapi>=0.115.0",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "minify-html>=0.18.1",
+    "structlog>=25.3.0",
+    "tzdata>=2025.2",
+    "uvicorn[standard]>=0.34.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+    "ruff>=0.11.9",
+]
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+line-length = 100
+indent-width = 4
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W"]
+ignore = ["W191"]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "tab"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = 30
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

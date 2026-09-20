@@ -1,0 +1,70 @@
+name: Build and deploy to GitHub Pages
+
+on:
+  schedule:
+    # Regenerate the guide every 6 hours (UTC). GitHub can delay cron jobs
+    # under load, which is fine for a TV guide.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app.py"
+      - "build.py"
+      - "mamietv.toml"
+      - "utils/**"
+      - "templates/**"
+      - "static/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Generate the static site
+        run: uv run python build.py
+
+      - name: Sanity check
+        run: test -f static/index.html && test -f static/data/epg.json
+
+      # GitHub Pages compresses on its own, so the .br/.gz siblings the local
+      # middleware uses are dead weight here: keep only the plain files.
+      - name: Assemble the Pages artifact
+        run: |
+          mkdir -p dist
+          rsync -a --exclude='*.br' --exclude='*.gz' --exclude='*.tmp' static/ dist/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
