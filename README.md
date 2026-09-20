@@ -1,7 +1,7 @@
 # MamieTV
 
-MamieTV affiche **ce qui passe en prime time (20 h – minuit) sur les chaînes de
-la TNT française**.
+MamieTV affiche **ce qui passe en prime time (20 h 45 – minuit) sur les chaînes
+de la TNT française**.
 Le backend télécharge le guide XMLTV, le découpe et écrit une poignée de
 fichiers statiques ; le front n'est qu'une page qui les lit. Aucun proxy CORS,
 aucun parsing XML dans le navigateur, aucun appel réseau côté client.
@@ -22,7 +22,10 @@ aucun parsing XML dans le navigateur, aucun appel réseau côté client.
 - **Logos** : les logos des chaînes sont téléchargés une fois côté backend (petit
   format 96×96, ~6 ko), stockés dans `static/channels/` et servis depuis notre
   origine : plus aucune dépendance à un hôte tiers.
-- **Front** : HTML/CSS/JS vanilla, une page, qui lit `/data/epg.json`.
+- **Front** : HTML/CSS/JS vanilla, une page, qui lit `data/epg.json`.
+- **PWA installable** : manifeste + service worker, donc installable sur un
+  téléphone (« Ajouter à l'écran d'accueil ») et consultable hors ligne grâce au
+  cache de la dernière soirée.
 
 ## Fonctionnement
 
@@ -54,8 +57,26 @@ mamietv/
 │   ├── utils.py           # Orchestration
 │   └── logs.py            # structlog
 ├── templates/             # Jinja2 (index, head, footer)
-├── static/                # Sources versionnées (css, js) + fichiers générés
+├── static/                # Sources versionnées + fichiers générés
+│   ├── manifest.webmanifest  # Manifeste PWA
+│   ├── sw.js              # Service worker (cache hors ligne)
+│   ├── icons/             # Icônes PWA/favicon (générées, versionnées)
+│   └── ...
+├── build_tools/
+│   └── make_icons.py      # Génère les icônes PWA (Pillow, dev uniquement)
 └── tests/                 # pytest
+```
+
+### PWA
+
+L'app est installable : sur mobile, ouvrir le site puis « Ajouter à l'écran
+d'accueil ». Le service worker (`static/sw.js`) met en cache la coquille et
+sert le guide en *network-first* (la dernière soirée est dispo hors ligne).
+
+Les icônes sont versionnées. Pour les régénérer après un changement de logo :
+
+```bash
+uv run python build_tools/make_icons.py
 ```
 
 ## Installation

@@ -242,3 +242,11 @@ async function init() {
 }
 
 init();
+
+// Installable PWA: the service worker precaches the shell and serves the guide
+// network-first (falling back to the last copy when offline).
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => console.warn("Service worker", err));
+  });
+}

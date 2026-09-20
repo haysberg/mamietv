@@ -99,6 +99,9 @@ class SecurityHeadersMiddleware:
 def _cache_control(path: str) -> str:
 	if path == '/healthz':
 		return 'no-store'
+	# The service worker must be revalidated so updates actually land.
+	if path.endswith('/sw.js'):
+		return 'no-cache'
 	if os.path.splitext(path)[1] in _IMMUTABLE_EXTENSIONS:
 		return 'public, max-age=31536000, immutable'
 	return 'public, max-age=900'
