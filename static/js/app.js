@@ -1,68 +1,32 @@
 "use strict";
 
 /*
- * Ce soir à la télé — front-end.
+ * MamieTV — front-end.
  *
  * Le backend a déjà téléchargé et découpé le guide : cette page ne fait que
- * charger /data/epg.json (même origine, aucun proxy, aucun parsing XML) et
- * l'afficher, en recalculant « en ce moment » à la volée.
+ * charger data/epg.json (même origine) et l'afficher. « En ce moment » est
+ * recalculé en continu, et le guide est rechargé tout seul pour ne jamais
+ * rester bloqué sur une soirée périmée.
  */
 
 const DATA_URL = window.MAMIETV_DATA || "data/epg.json";
 const TZ = "Europe/Paris";
+const REFRESH_MS = 15 * 60 * 1000;
+const MIN_REFRESH_GAP_MS = 60 * 1000;
 
 const state = {
   channels: [],
-  signature: "",
-  day: null,
   eveningStart: 0,
   eveningEnd: 0,
+  generatedAt: null,
 };
+let lastLoad = 0;
 
 const $ = (sel) => document.querySelector(sel);
 
-const fmtTime = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
-const fmtClock = new Intl.DateTimeFormat("fr-FR", {
-  timeZone: TZ, weekday: "long", hour: "2-digit", minute: "2-digit",
+const fmtTime = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: TZ, hour: "2-digit", minute: "2-digit",
 });
-const fmtDate = new Intl.DateTimeFormat("fr-FR", {
-  timeZone: "UTC", weekday: "long", day: "numeric", month: "long",
-});
-
-function capitalize(str) {
-  return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
-}
-
-function todayKey() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date());
-}
-
-function dayOffset(day) {
-  const a = Date.parse(`${day}T00:00:00Z`);
-  const b = Date.parse(`${todayKey()}T00:00:00Z`);
-  return Math.round((a - b) / 86400000);
-}
-
-function dayLabel(day) {
-  if (!day) return "Ce soir";
-  const off = dayOffset(day);
-  if (off === 0) return "Ce soir";
-  if (off === -1) return "Hier soir";
-  if (off === 1) return "Demain soir";
-  return capitalize(fmtDate.format(new Date(`${day}T12:00:00Z`)));
-}
-
-function timeLabel(iso) {
-  const parts = new Intl.DateTimeFormat("fr-FR", {
-    timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-  }).formatToParts(new Date(iso));
-  const hour = Number(parts.find((p) => p.type === "hour").value);
-  const minute = Number(parts.find((p) => p.type === "minute").value);
-  if (hour === 0 && minute === 0) return "minuit";
-  return minute ? `${hour} h ${String(minute).padStart(2, "0")}` : `${hour} h`;
-}
 
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
@@ -90,15 +54,11 @@ function programRow(program, now) {
   const isNow = now >= start && now < stop;
   const ended = stop <= now;
 
-  const time = el("div", { class: "time" }, [
-    document.createTextNode(fmtTime.format(new Date(start))),
-    el("small", { text: fmtTime.format(new Date(stop)) }),
-  ]);
-
   const chips = el("div", { class: "chips" }, [
-    isNow ? el("span", { class: "chip now", text: "En ce moment" }) : null,
-    ended ? el("span", { class: "chip", text: "Terminé" }) : null,
+    el("span", { class: "time", text: fmtTime.format(new Date(start)) }),
     program.category ? el("span", { class: "chip", text: program.category }) : null,
+    isNow ? el("span", { class: "chip now", text: "En ce moment" }) : null,
+    ended ? el("span", { class: "chip ended", text: "Terminé" }) : null,
   ]);
 
   const body = el("div", { class: "program-body" }, [
@@ -115,7 +75,7 @@ function programRow(program, now) {
     class: `program${isNow ? " is-now" : ""}${ended ? " is-ended" : ""}`,
     "data-start": String(start),
     "data-stop": String(stop),
-  }, [time, body]);
+  }, [body]);
 
   row.addEventListener("click", () => {
     row.classList.toggle("expanded");
@@ -137,65 +97,63 @@ function channelCard(channel, now) {
   for (const program of visiblePrograms(channel.programs)) {
     list.append(programRow(program, now));
   }
-  const hasNow = Boolean(list.querySelector(".is-now"));
-  return el("section", { class: `channel${hasNow ? " has-now" : ""}` }, [
-    el("div", { class: "channel-head" }, [
-      logo,
-      el("span", { class: "channel-name", text: channel.name }),
-    ]),
+
+  const head = el("div", { class: "channel-head" }, [
+    logo,
+    el("span", { class: "channel-name", text: channel.name }),
+    channel.number ? el("span", { class: "channel-number", text: String(channel.number) }) : null,
+  ]);
+
+  return el("section", { class: `channel${list.querySelector(".is-now") ? " has-now" : ""}` }, [
+    head,
     list,
   ]);
-}
-
-function signature() {
-  return state.channels.map((c) => `${c.id}:${visiblePrograms(c.programs).length}`).join("|");
 }
 
 function render() {
   const now = Date.now();
   const container = $("#channels");
   container.replaceChildren();
-  let withNow = 0;
   for (const channel of state.channels) {
-    const card = channelCard(channel, now);
-    if (card.classList.contains("has-now")) withNow += 1;
-    container.append(card);
+    container.append(channelCard(channel, now));
   }
-  state.signature = signature();
 
-  const total = state.channels.length;
   const status = $("#status");
-  status.textContent = total
-    ? `${total} chaînes${withNow ? ` · ${withNow} en direct` : ""}`
-    : "Aucun programme pour cette soirée.";
-  status.className = total ? "status muted" : "status";
+  status.className = "status";
+  status.textContent = state.channels.length ? "" : "Aucun programme pour cette soirée.";
 }
 
 function updateNow() {
   const now = Date.now();
-  if (signature() !== state.signature) {
-    render();
-    return;
-  }
   document.querySelectorAll(".program").forEach((row) => {
     const start = Number(row.dataset.start);
     const stop = Number(row.dataset.stop);
     const isNow = now >= start && now < stop;
+    const ended = stop <= now;
     row.classList.toggle("is-now", isNow);
-    const existing = row.querySelector(".chip.now");
-    if (isNow && !existing) {
-      row.querySelector(".chips")?.prepend(el("span", { class: "chip now", text: "En ce moment" }));
-    } else if (!isNow && existing) {
-      existing.remove();
+    row.classList.toggle("is-ended", ended);
+
+    const chips = row.querySelector(".chips");
+    if (!chips) return;
+
+    const existingNow = row.querySelector(".chip.now");
+    if (isNow && !existingNow) {
+      chips.append(el("span", { class: "chip now", text: "En ce moment" }));
+    } else if (!isNow && existingNow) {
+      existingNow.remove();
+    }
+
+    const existingEnded = row.querySelector(".chip.ended");
+    if (ended && !existingEnded) {
+      chips.append(el("span", { class: "chip ended", text: "Terminé" }));
+    } else if (!ended && existingEnded) {
+      existingEnded.remove();
     }
   });
+
   document.querySelectorAll(".channel").forEach((card) => {
     card.classList.toggle("has-now", Boolean(card.querySelector(".is-now")));
   });
-}
-
-function tickClock() {
-  $("#clock").textContent = capitalize(fmtClock.format(new Date()));
 }
 
 function showError() {
@@ -208,31 +166,38 @@ async function load(force = false) {
   const url = force ? `${DATA_URL}${DATA_URL.includes("?") ? "&" : "?"}t=${Date.now()}` : DATA_URL;
   const response = await fetch(url, { cache: force ? "no-store" : "default" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  lastLoad = Date.now();
 
   const data = await response.json();
+  // Unchanged guide: keep what is on screen (and its scroll position).
+  if (data.generated_at === state.generatedAt) return;
+
+  state.generatedAt = data.generated_at;
   state.channels = data.channels || [];
-  state.day = data.day;
   state.eveningStart = Date.parse(data.evening_start);
   state.eveningEnd = Date.parse(data.evening_end);
 
-  $("#subtitle").textContent =
-    `${dayLabel(data.day)} — de ${timeLabel(data.evening_start)} à ${timeLabel(data.evening_end)}`;
   $("#generated").textContent = `Mis à jour le ${new Date(data.generated_at).toLocaleString("fr-FR")}`;
   render();
 }
 
+async function refresh() {
+  try {
+    await load(true);
+  } catch (err) {
+    // Offline or transient: the current guide stays displayed.
+    console.warn("Rafraîchissement du guide impossible :", err);
+  }
+}
+
 async function init() {
-  tickClock();
-  setInterval(tickClock, 20000);
   setInterval(updateNow, 30000);
-  $("#refresh").addEventListener("click", async () => {
-    try {
-      await load(true);
-    } catch (err) {
-      showError();
-      console.error(err);
-    }
+  setInterval(refresh, REFRESH_MS);
+  // Coming back to the tab/app (typically the next day on a phone) reloads it.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && Date.now() - lastLoad > MIN_REFRESH_GAP_MS) refresh();
   });
+
   try {
     await load(false);
   } catch (err) {

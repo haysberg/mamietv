@@ -18,6 +18,35 @@ from utils.config import Config
 
 PARIS = ZoneInfo('Europe/Paris')
 
+# Official French DTT (TNT) channel numbers, shown as a badge on each card.
+TNT_NUMBERS = {
+	'TF1.fr': 1,
+	'France2.fr': 2,
+	'France3.fr': 3,
+	'France4.fr': 4,
+	'France5.fr': 5,
+	'M6.fr': 6,
+	'Arte.fr': 7,
+	'LaChaineParlementaire.fr': 8,
+	'W9.fr': 9,
+	'TMC.fr': 10,
+	'NT1.fr': 11,
+	'Gulli.fr': 12,
+	'BFMTV.fr': 13,
+	'CNews.fr': 14,
+	'LCI.fr': 15,
+	'FranceInfo.fr': 16,
+	'CStar.fr': 17,
+	'T18.fr': 18,
+	'NOVO19.fr': 19,
+	'TF1SeriesFilms.fr': 20,
+	'LEquipe21.fr': 21,
+	'6ter.fr': 22,
+	'Numero23.fr': 23,
+	'RMCDecouverte.fr': 24,
+	'Cherie25.fr': 25,
+}
+
 FETCH_TIMEOUT = 60
 CONNECT_TIMEOUT = 10
 USER_AGENT = 'MamieTV/1.0 (+https://github.com/haysberg/mamietv)'
@@ -167,6 +196,7 @@ def parse_channels(root: ET.Element, only: tuple[str, ...]) -> dict[str, dict]:
 		channels[cid] = {
 			'id': cid,
 			'name': _text(channel.find('display-name')) or cid,
+			'number': TNT_NUMBERS.get(cid),
 			'icon': icon.get('src') if icon is not None else None,
 			'programs': [],
 		}
@@ -245,6 +275,9 @@ def build_epg(xml_bytes: bytes, config: Config, now: datetime) -> dict:
 			config.evening.min_duration_minutes,
 		)
 		served.append(channel)
+
+	# Display in channel-number order (unknown numbers last).
+	served.sort(key=lambda channel: (channel['number'] is None, channel['number'] or 0))
 
 	return {
 		'generated_at': now.astimezone(PARIS).isoformat(),

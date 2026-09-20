@@ -3,15 +3,17 @@
 {% include "head.html" %}
 <body>
   <header class="topbar">
-    <h1 class="brand">📺 MamieTV</h1>
-    <div class="topbar-right">
-      <span class="clock" id="clock"></span>
-      <button id="refresh" class="refresh" type="button" title="Actualiser" aria-label="Actualiser">↻</button>
-    </div>
+    <h1 class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M9 8 6.4 4.6M15 8l2.6-3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        <rect x="3" y="8" width="18" height="11" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <path d="M10.4 11.4v4.2l3.9-2.1z" fill="currentColor" />
+      </svg>
+      <span class="brand-name">MamieTV</span>
+    </h1>
   </header>
 
   <main>
-    <p class="subtitle" id="subtitle"></p>
     <div id="status" class="status" role="status">Chargement du programme…</div>
     <div id="channels" class="channels" aria-live="polite"></div>
   </main>

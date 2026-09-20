@@ -85,11 +85,13 @@ def test_build_epg_filters_to_evening_and_keeps_order():
 
 	tf1 = epg['channels'][0]
 	titles = [program['title'] for program in tf1['programs']]
-	assert titles == ['Journal', 'Film du soir']  # the 10:00 show is out of window
+	assert titles == ['Journal', 'Film du soir']
 	assert tf1['programs'][0]['category'] == 'Information'
 	assert tf1['icon'] == 'http://x/tf1.png'
+	assert tf1['number'] == 1
 
 	assert [p['title'] for p in epg['channels'][1]['programs']] == ['M6 Show']
+	assert epg['channels'][1]['number'] == 6
 
 
 def test_build_epg_respects_channel_whitelist():
