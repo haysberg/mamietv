@@ -2,7 +2,7 @@
 	"id": "./",
 	"name": "MamieTV — Ce soir à la télé",
 	"short_name": "MamieTV",
-	"description": "Ce qui passe en prime time (20 h 45 – minuit) sur les chaînes de la TNT française.",
+	"description": "Ce qui passe en prime time (21 h – minuit) sur les chaînes de la TNT française.",
 	"lang": "fr",
 	"dir": "ltr",
 	"start_url": "./",

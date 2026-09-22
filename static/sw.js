@@ -3,21 +3,26 @@
  *
  * Makes the app installable and usable offline: the page shell is cached on
  * install, static assets use stale-while-revalidate, and the guide
- * (`data/epg.json`) is network-first so a returning user gets the latest
+ * (`data/*.json`) is network-first so a returning user gets the latest
  * program and the previous one only when offline.
+ *
+ * The build replaces the __CSS_HASH__ / __JS_HASH__ placeholders, so each
+ * release gets its own cache (older ones are purged on activate) and the
+ * precached URLs match the `?v=` ones the page actually requests.
  */
 
-const CACHE = "mamietv-v1";
+const CACHE = "mamietv-__CSS_HASH__-__JS_HASH__";
 
 const CORE = [
 	"./",
 	"index.html",
 	"manifest.webmanifest",
-	"css/style.css",
-	"js/app.js",
+	"css/style.css?v=__CSS_HASH__",
+	"js/app.js?v=__JS_HASH__",
 	"icons/icon-192.png",
 	"icons/icon-512.png",
 	"icons/apple-touch-icon.png",
+	"icons/tv.png",
 	"favicon.ico",
 ];
 
@@ -50,7 +55,7 @@ self.addEventListener("fetch", (event) => {
 		event.respondWith(networkFirst(request, "index.html", true));
 		return;
 	}
-	if (url.pathname.endsWith("/data/epg.json")) {
+	if (url.pathname.includes("/data/")) {
 		event.respondWith(networkFirst(request));
 		return;
 	}

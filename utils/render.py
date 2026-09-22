@@ -1,8 +1,9 @@
 """Assemble the publishable `dist/` tree.
 
-`copy_assets()` lays down the committed assets (minifying the shipped JS), then
+`copy_assets()` lays down the committed assets (minifying the shipped JS, CSS and HTML), then
 `write_site()` renders the whole page — channel cards included — into
-`index.html` and writes `data/epg.json`. Rendering server-side means the list is
+`index.html` and writes `data/epg.json` plus the tiny `data/version.json` the
+page polls to spot a newer guide. Rendering server-side means the list is
 present at first paint (no layout shift), and the page still works without JS.
 Writes are atomic (temp file + `os.replace`).
 """
@@ -15,6 +16,7 @@ from datetime import datetime
 
 import jsmin
 import minify_html
+import rcssmin
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from utils import DIST_DIR, STATIC_DIR, TEMPLATES_DIR
@@ -48,16 +50,26 @@ def _write_atomic(path: str, data: bytes) -> None:
 	os.replace(tmp, path)
 
 
-def _minify_js(dest: str) -> None:
+# rcssmin only strips whitespace and comments. minify-html's CSS mode would also
+# rewrite `(max-width: 600px)` into `(width<=600px)`, which iOS < 16.4 ignores.
+_MINIFIERS = {
+	'.js': jsmin.jsmin,
+	'.css': rcssmin.cssmin,
+	'.html': lambda source: minify_html.minify(source, minify_css=False, minify_js=True),
+}
+
+
+def _minify_assets(dest: str) -> None:
 	for root, _dirs, files in os.walk(dest):
 		for name in files:
-			if not name.endswith('.js'):
+			minify = _MINIFIERS.get(os.path.splitext(name)[1])
+			if minify is None:
 				continue
 			path = os.path.join(root, name)
 			with open(path, encoding='utf-8') as f:
 				source = f.read()
 			with open(path, 'w', encoding='utf-8') as f:
-				f.write(jsmin.jsmin(source))
+				f.write(minify(source))
 
 
 def copy_assets(dest: str = DIST_DIR) -> None:
@@ -70,7 +82,19 @@ def copy_assets(dest: str = DIST_DIR) -> None:
 			shutil.rmtree(path)
 		elif os.path.exists(path):
 			os.remove(path)
-	_minify_js(dest)
+	_minify_assets(dest)
+	_stamp_service_worker(dest)
+
+
+def _stamp_service_worker(dest: str) -> None:
+	"""Version the service worker's cache and precache list with the asset hashes."""
+	path = os.path.join(dest, 'sw.js')
+	hashes = asset_hashes(dest)
+	with open(path, encoding='utf-8') as f:
+		source = f.read()
+	source = source.replace('__CSS_HASH__', hashes['css_hash'])
+	source = source.replace('__JS_HASH__', hashes['js_hash'])
+	_write_atomic(path, source.encode('utf-8'))
 
 
 def asset_hashes(dest: str = DIST_DIR) -> dict[str, str]:
@@ -79,6 +103,30 @@ def asset_hashes(dest: str = DIST_DIR) -> dict[str, str]:
 		'css_hash': _file_hash(os.path.join(dest, 'css', 'style.css')),
 		'js_hash': _file_hash(os.path.join(dest, 'js', 'app.js')),
 	}
+
+
+_WEEKDAYS = ('lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche')
+_MONTHS = (
+	'janvier',
+	'février',
+	'mars',
+	'avril',
+	'mai',
+	'juin',
+	'juillet',
+	'août',
+	'septembre',
+	'octobre',
+	'novembre',
+	'décembre',
+)
+
+
+def _french_datetime(value: datetime) -> str:
+	"""'dimanche 20 septembre à 21 h 11', without depending on the system locale."""
+	day = _WEEKDAYS[value.weekday()]
+	month = _MONTHS[value.month - 1]
+	return f'{day} {value.day} {month} à {value.hour} h {value.minute:02d}'
 
 
 def _view_channels(epg: dict) -> list[dict]:
@@ -101,7 +149,6 @@ def _view_channels(epg: dict) -> list[dict]:
 					'start_ms': int(start.timestamp() * 1000),
 					'stop_ms': int(stop.timestamp() * 1000),
 					'ended': stop <= generated,
-					'more': len(description) > 140,
 				}
 			)
 		cards.append(
@@ -115,13 +162,12 @@ def _view_channels(epg: dict) -> list[dict]:
 	return cards
 
 
-def render_index(epg: dict, data_hash: str, dest: str = DIST_DIR) -> str:
+def render_index(epg: dict, dest: str = DIST_DIR) -> str:
 	generated = datetime.fromisoformat(epg['generated_at'])
 	html = _env.get_template('index.html').render(
 		cards=_view_channels(epg),
-		data_hash=data_hash,
 		generated_at=epg['generated_at'],
-		generated_label=generated.strftime('%d/%m/%Y à %H:%M'),
+		generated_label=_french_datetime(generated),
 		evening_start=epg['evening_start'],
 		evening_end=epg['evening_end'],
 		**asset_hashes(dest),
@@ -130,11 +176,14 @@ def render_index(epg: dict, data_hash: str, dest: str = DIST_DIR) -> str:
 
 
 def write_site(epg: dict, dest: str = DIST_DIR) -> dict:
-	"""Write `data/epg.json` and the fully rendered `index.html` into `dest`."""
+	"""Write the guide JSON files and the fully rendered `index.html` into `dest`."""
 	epg_bytes = json.dumps(epg, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
 	_write_atomic(os.path.join(dest, 'data', 'epg.json'), epg_bytes)
+	# A few dozen bytes instead of the whole guide for the periodic check.
+	version = json.dumps({'generated_at': epg['generated_at']}).encode('utf-8')
+	_write_atomic(os.path.join(dest, 'data', 'version.json'), version)
 
-	html = render_index(epg, _md5(epg_bytes), dest)
+	html = render_index(epg, dest)
 	_write_atomic(os.path.join(dest, 'index.html'), html.encode('utf-8'))
 
 	return {

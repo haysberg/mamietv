@@ -9,6 +9,7 @@ dependencies = [
     "jinja2>=3.1.6",
     "jsmin>=3.0.1",
     "minify-html>=0.18.1",
+    "rcssmin>=1.2.2",
     "structlog>=25.3.0",
     "tzdata>=2025.2",
 ]

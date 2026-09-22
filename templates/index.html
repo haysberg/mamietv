@@ -1,4 +1,4 @@
-{% macro program_row(program) %}
+{% macro program_row(program, desc_id) %}
 <li class="program{% if program.ended %} is-ended{% endif %}" data-start="{{ program.start_ms }}" data-stop="{{ program.stop_ms }}">
   <div class="program-body">
     <p class="program-title">{{ program.title }}</p>
@@ -8,13 +8,13 @@
       {% if program.category %}<span class="chip">{{ program.category }}</span>{% endif %}
       {% if program.ended %}<span class="chip ended">Terminé</span>{% endif %}
     </div>
-    {% if program.desc %}<p class="desc">{{ program.desc }}</p>{% endif %}
-    {% if program.more %}<button class="more" type="button">Plus de détails</button>{% endif %}
+    {% if program.desc %}<p class="desc" id="{{ desc_id }}">{{ program.desc }}</p>{% endif %}
+    {% if program.desc %}<button class="more" type="button" aria-expanded="false" aria-controls="{{ desc_id }}" hidden>Plus de détails</button>{% endif %}
   </div>
 </li>
 {% endmacro %}
 
-{% macro channel_card(card) %}
+{% macro channel_card(card, index) %}
 <section class="channel">
   <div class="channel-head">
     {% if card.icon %}<img src="{{ card.icon }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="no-logo">📺</span>{% endif %}
@@ -22,7 +22,7 @@
     {% if card.number %}<span class="channel-number">{{ card.number }}</span>{% endif %}
   </div>
   <ul class="programs">
-    {% for program in card.programs %}{{ program_row(program) }}{% endfor %}
+    {% for program in card.programs %}{{ program_row(program, 'desc-%d-%d' % (index, loop.index)) }}{% endfor %}
   </ul>
 </section>
 {% endmacro %}
@@ -32,29 +32,25 @@
 <body>
   <header class="topbar">
     <h1 class="brand">
-      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M9 8 6.4 4.6M15 8l2.6-3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-        <rect x="3" y="8" width="18" height="11" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.8" />
-        <path d="M10.4 11.4v4.2l3.9-2.1z" fill="currentColor" />
-      </svg>
+      <img class="brand-mark" src="icons/tv.png" width="30" height="30" alt="">
       <span class="brand-name">MamieTV</span>
     </h1>
     <button id="install" class="install" type="button" hidden>Installer</button>
   </header>
 
   <main>
+    <p class="updated">Mis à jour le {{ generated_label }}</p>
     {% if not cards %}<p class="status">Aucun programme pour cette soirée.</p>{% endif %}
-    <div id="channels" class="channels" aria-live="polite"
+    <div id="channels" class="channels"
          data-generated-at="{{ generated_at }}"
          data-evening-start="{{ evening_start }}"
          data-evening-end="{{ evening_end }}">
-      {% for card in cards %}{{ channel_card(card) }}{% endfor %}
+      {% for card in cards %}{{ channel_card(card, loop.index) }}{% endfor %}
     </div>
   </main>
 
-  {% include "footer.html" %}
+  <p class="credit"><a href="https://haysberg.io" rel="noopener">par haysberg.io</a></p>
 
-  <script>window.MAMIETV_DATA = "data/epg.json?v={{ data_hash }}";</script>
   <script defer src="js/app.js?v={{ js_hash }}"></script>
 </body>
 </html>

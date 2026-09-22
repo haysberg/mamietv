@@ -12,14 +12,6 @@ from pathlib import Path
 @dataclass(frozen=True)
 class SourceConfig:
 	url: str
-	user_agent: str = 'MamieTV/1.0'
-
-
-@dataclass(frozen=True)
-class ServerConfig:
-	update_interval_minutes: int = 180
-	host: str = '0.0.0.0'
-	port: int = 8000
 
 
 @dataclass(frozen=True)
@@ -30,8 +22,9 @@ class EveningConfig:
 	start_minute: int = 0
 	end_hour: int = 0
 	end_minute: int = 0
-	# Extra hours fetched on each side so a show straddling the boundary is kept.
-	buffer_hours: int = 0
+	# A show that began before the window is kept when at least this many
+	# minutes of it remain at the window start (a match kicking off at 20:35).
+	carry_over_minutes: int = 30
 	# Télé-Loisirs-style selection: keep at most `max_programs` "real" shows per
 	# channel (the headliner and its follow-up). Shows shorter than
 	# `min_duration_minutes` (weather, fillers) are ignored when choosing.
@@ -44,7 +37,6 @@ class EveningConfig:
 @dataclass(frozen=True)
 class Config:
 	source: SourceConfig
-	server: ServerConfig = field(default_factory=ServerConfig)
 	evening: EveningConfig = field(default_factory=EveningConfig)
 
 
@@ -53,16 +45,15 @@ def load_config(path: str | Path) -> Config:
 		raw = tomllib.load(f)
 
 	source = SourceConfig(**raw.get('source', {}))
-	server = ServerConfig(**raw.get('server', {}))
 	evening_raw = raw.get('evening', {})
 	evening = EveningConfig(
 		start_hour=evening_raw.get('start_hour', 20),
 		start_minute=evening_raw.get('start_minute', 0),
 		end_hour=evening_raw.get('end_hour', 0),
 		end_minute=evening_raw.get('end_minute', 0),
-		buffer_hours=evening_raw.get('buffer_hours', 0),
+		carry_over_minutes=evening_raw.get('carry_over_minutes', 30),
 		max_programs=evening_raw.get('max_programs', 2),
 		min_duration_minutes=evening_raw.get('min_duration_minutes', 25),
 		channels=tuple(evening_raw.get('channels', ())),
 	)
-	return Config(source=source, server=server, evening=evening)
+	return Config(source=source, evening=evening)

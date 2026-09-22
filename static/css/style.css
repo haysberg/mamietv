@@ -44,7 +44,9 @@ body {
   letter-spacing: -.01em;
 }
 
-.brand-mark { display: block; width: 28px; height: 28px; }
+/* The antennas make the picture top-heavy: lift it so the screen, not the
+   whole image, lines up with the middle of the capitals. */
+.brand-mark { display: block; width: 30px; height: 30px; transform: translateY(-2px); }
 
 .brand-name { line-height: 1; }
 
@@ -66,6 +68,21 @@ body {
 .install[hidden] { display: none; }
 
 main { max-width: 820px; margin: 0 auto; padding: 8px 16px 24px; }
+
+.updated {
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.credit {
+  margin: 0;
+  padding: 4px 16px 28px;
+  text-align: center;
+  font-size: .9rem;
+}
+
+.credit a { color: var(--accent); font-weight: 600; text-decoration: none; }
 
 .status { color: var(--muted); padding: 14px 2px; }
 .status.error { color: var(--accent); }
@@ -122,8 +139,9 @@ main { max-width: 820px; margin: 0 auto; padding: 8px 16px 24px; }
 .program {
   padding: 12px 14px;
   border-top: 1px solid var(--line);
-  cursor: pointer;
 }
+
+.program.has-more { cursor: pointer; }
 
 .programs .program:first-child { border-top: 0; }
 
@@ -177,23 +195,19 @@ main { max-width: 820px; margin: 0 auto; padding: 8px 16px 24px; }
   cursor: pointer;
 }
 
-.footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  justify-content: center;
-  padding: 18px 16px 32px;
-  color: var(--muted);
-  font-size: .82rem;
-  border-top: 1px solid var(--line);
-  max-width: 820px;
-  margin: 0 auto;
+.more:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
-
-.footer a { color: var(--accent); }
 
 @media (max-width: 420px) {
   body { font-size: 17px; }
   .program { padding: 10px 12px; }
   .brand { font-size: 1.15rem; }
+}
+
+/* Phones: two lines are enough to recognise a show; the rest is one tap away. */
+@media (max-width: 600px) {
+  .desc { -webkit-line-clamp: 2; }
 }

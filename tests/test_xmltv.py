@@ -26,12 +26,10 @@ SAMPLE = b"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def _config(channels=(), buffer_hours=1):
+def _config(channels=()):
 	return Config(
 		source=SourceConfig(url='http://example.test/guide.xml.gz'),
-		evening=EveningConfig(
-			start_hour=18, end_hour=1, buffer_hours=buffer_hours, channels=channels
-		),
+		evening=EveningConfig(start_hour=18, end_hour=1, channels=channels),
 	)
 
 
@@ -101,14 +99,35 @@ def test_build_epg_respects_channel_whitelist():
 	assert [channel['id'] for channel in epg['channels']] == ['M6.fr']
 
 
-def test_build_epg_drops_programs_starting_before_the_window():
-	straddling = SAMPLE.replace(
+def _titles_with_matin_at(start, stop):
+	"""TF1 titles once "Matin" is moved to [start, stop] (HHMM, 20 Sept)."""
+	xml = SAMPLE.replace(
 		b'start="20260920100000 +0200" stop="20260920110000 +0200"',
-		b'start="20260920173000 +0200" stop="20260920183000 +0200"',
+		f'start="20260920{start}00 +0200" stop="20260920{stop}00 +0200"'.encode(),
 	)
-	epg = build_epg(straddling, _config(buffer_hours=0), datetime(2026, 9, 20, 12, 0, tzinfo=PARIS))
-	titles = [program['title'] for program in epg['channels'][0]['programs']]
-	assert 'Matin' not in titles
+	epg = build_epg(xml, _config(), datetime(2026, 9, 20, 12, 0, tzinfo=PARIS))
+	return [program['title'] for program in epg['channels'][0]['programs']]
+
+
+def test_build_epg_drops_shows_ending_soon_after_the_window_starts():
+	# 20 minutes left at 18:00: a pre-prime filler, not part of the evening.
+	assert 'Matin' not in _titles_with_matin_at('1740', '1820')
+
+
+def test_build_epg_keeps_shows_still_running_well_into_the_window():
+	# Kick-off before the window, 2 hours left: the evening's headliner.
+	assert _titles_with_matin_at('1735', '2000')[0] == 'Matin'
+
+
+def test_build_epg_skips_generic_categories():
+	xml = SAMPLE.replace(
+		b'<title>Film du soir</title>',
+		b'<title>Film du soir</title><category>Programme</category><category>Cinema</category>',
+	).replace(b'<title>M6 Show</title>', b'<title>M6 Show</title><category>Autre</category>')
+	epg = build_epg(xml, _config(), datetime(2026, 9, 20, 12, 0, tzinfo=PARIS))
+	assert epg['channels'][0]['programs'][1]['category'] == 'Cinema'
+	# Nothing but generic labels: no chip at all.
+	assert epg['channels'][1]['programs'][0]['category'] == ''
 
 
 def _program(start, stop, title):

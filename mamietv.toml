@@ -2,24 +2,19 @@
 # TNT guide covers the 30 French DVB-T channels and is regenerated daily.
 [source]
 url = "https://xmltvfr.fr/xmltv/xmltv_tnt.xml.gz"
-user_agent = "MamieTV/1.0 (+https://github.com/haysberg/mamietv)"
-
-[server]
-# The upstream guide only changes a few times a day, so a 3-hour refresh is
-# plenty and keeps us polite with xmltvfr.fr. A conditional GET (ETag /
-# Last-Modified) makes most of those refreshes free anyway.
-update_interval_minutes = 180
-host = "0.0.0.0"
-port = 8000
 
 [evening]
-# "Ce soir" = prime time, 20 h 45 -> minuit (heure de Paris). Only programs that
-# start in that window are shown, so no buffer is needed on the start side.
-start_hour = 20
-start_minute = 45
+# "Ce soir" = prime time, 21 h -> minuit (heure de Paris). Starting at 21 h
+# rather than 20 h 45 keeps pre-prime shows (Quotidien, Un si grand soleil...)
+# from taking one of the two slots.
+start_hour = 21
+start_minute = 0
 end_hour = 0
 end_minute = 0
-buffer_hours = 0
+# A show that started earlier still counts if at least carry_over_minutes of
+# it remain at 21 h: football at 20:35 is kept, Quotidien ending at 21:25 is
+# not.
+carry_over_minutes = 30
 # Télé-Loisirs-style selection: keep at most max_programs "real" shows per
 # channel (the headliner and its follow-up). Shows shorter than
 # min_duration_minutes (météo, trailers, fillers) are ignored when choosing.

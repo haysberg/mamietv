@@ -51,6 +51,12 @@ FETCH_TIMEOUT = 60
 CONNECT_TIMEOUT = 10
 USER_AGENT = 'MamieTV/1.0 (+https://github.com/haysberg/mamietv)'
 
+# XMLTV Fr labels that say nothing about the show ("Programme / Divertissement",
+# "Autre", "Services / Météo"...). The first category outside this set is used.
+_GENERIC_CATEGORIES = frozenset(
+	{'Programme', 'Programme indéterminé', 'Autre', 'Divers', 'Services', 'Fin'}
+)
+
 # Before this hour, "ce soir" still refers to the previous calendar day.
 DAY_RESET_HOUR = 6
 
@@ -59,8 +65,6 @@ DAY_RESET_HOUR = 6
 _TIME_RE = re.compile(r'^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?\s*([+-]\d{2}:?\d{2}|Z)?$')
 
 _client: httpx.AsyncClient | None = None
-_etag: str | None = None
-_modified: str | None = None
 
 
 def get_client() -> httpx.AsyncClient:
@@ -82,27 +86,10 @@ async def close_client() -> None:
 		_client = None
 
 
-async def fetch_xml(config: Config) -> bytes | None:
-	"""Download the guide, conditionally.
-
-	Returns the (decompressed) XML bytes, or ``None`` when the origin answers
-	304 Not Modified and the caller should keep the previous data.
-	"""
-	global _etag, _modified
-
-	headers = {'User-Agent': config.source.user_agent}
-	if _etag:
-		headers['If-None-Match'] = _etag
-	if _modified:
-		headers['If-Modified-Since'] = _modified
-
-	response = await get_client().get(config.source.url, headers=headers)
-	if response.status_code == 304:
-		return None
+async def fetch_xml(config: Config) -> bytes:
+	"""Download the guide and return the (decompressed) XML bytes."""
+	response = await get_client().get(config.source.url)
 	response.raise_for_status()
-
-	_etag = response.headers.get('ETag')
-	_modified = response.headers.get('Last-Modified')
 
 	data = response.content
 	# The feed is served as a .gz file (Content-Type: application/x-gzip) with
@@ -203,10 +190,28 @@ def parse_channels(root: ET.Element, only: tuple[str, ...]) -> dict[str, dict]:
 	return channels
 
 
+def _category(programme: ET.Element) -> str:
+	for element in programme.findall('category'):
+		label = _text(element)
+		if label and label not in _GENERIC_CATEGORIES:
+			return label
+	return ''
+
+
 def parse_programs(
-	root: ET.Element, channels: dict[str, dict], start: datetime, end: datetime
+	root: ET.Element,
+	channels: dict[str, dict],
+	start: datetime,
+	end: datetime,
+	carry_over: timedelta,
 ) -> None:
-	"""Attach every program whose *start* falls within [start, end]."""
+	"""Attach the programs of the evening to their channel.
+
+	That is every program starting within [start, end), plus the ones that began
+	a little earlier but still have at least `carry_over` to run at `start`: a
+	match kicking off at 20:35 is the evening's headliner, whereas a sitcom
+	ending at 21:10 is not.
+	"""
 	for programme in root.findall('programme'):
 		channel = channels.get(programme.get('channel'))
 		if channel is None:
@@ -220,7 +225,9 @@ def parse_programs(
 		except ValueError:
 			prog_stop = prog_start + timedelta(hours=1)
 
-		if not (start <= prog_start < end):
+		starts_inside = start <= prog_start < end
+		carried_over = prog_start < start and prog_stop - start >= carry_over
+		if not (starts_inside or carried_over):
 			continue
 
 		channel['programs'].append(
@@ -230,7 +237,7 @@ def parse_programs(
 				'title': _text(programme.find('title')) or '(Sans titre)',
 				'subtitle': _text(programme.find('sub-title')),
 				'desc': _text(programme.find('desc')),
-				'category': _text(programme.find('category')),
+				'category': _category(programme),
 			}
 		)
 
@@ -258,11 +265,11 @@ def select_programs(programs: list[dict], limit: int, min_duration_minutes: int)
 def build_epg(xml_bytes: bytes, config: Config, now: datetime) -> dict:
 	"""Parse the guide into the JSON structure served to the front-end."""
 	start, end, day = evening_window(now, config)
-	buffer = timedelta(hours=config.evening.buffer_hours)
+	carry_over = timedelta(minutes=config.evening.carry_over_minutes)
 
 	root = ET.fromstring(xml_bytes)
 	channels = parse_channels(root, config.evening.channels)
-	parse_programs(root, channels, start - buffer, end + buffer)
+	parse_programs(root, channels, start, end, carry_over)
 
 	served = []
 	for channel in channels.values():
