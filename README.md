@@ -71,7 +71,8 @@ mamietv/
 
 ## Installation
 
-Prérequis : Python 3.14+ et [uv](https://github.com/astral-sh/uv).
+Prérequis : Python 3.14, épinglé dans `.python-version` (`minify-html` n'a pas
+encore de wheel pour Python 3.15), et [uv](https://github.com/astral-sh/uv).
 
 ```bash
 uv sync
